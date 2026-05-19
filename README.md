@@ -260,88 +260,6 @@ AtomBerg GoalHub includes role-aware analytics that help teams move from manual 
 - Clean workflow feedback through toasts, disabled loading states, validation messages, and protected routes.
 
 ---
-
-## Local Setup
-
-### Prerequisites
-
-- Node.js 20+
-- npm
-- Supabase project
-- Gmail app password for email notifications, optional for demo stability
-
-### Install Dependencies
-
-```bash
-npm install
-```
-
-### Environment Variables
-
-Create `.env.local` in the project root:
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Optional email delivery for workflow notifications
-SMTP_EMAIL=your-gmail-address@gmail.com
-SMTP_PASSWORD=your-gmail-app-password
-```
-
-Important:
-
-- `SUPABASE_SERVICE_ROLE_KEY` is used by the local seed script and server-side notification logging.
-- Never expose the service role key with a `NEXT_PUBLIC_` prefix.
-- If SMTP variables are missing, in-app notifications still work and email attempts are safely skipped/logged.
-
-### Supabase Setup
-
-1. Create a Supabase project.
-2. Open the Supabase SQL Editor.
-3. Run the full contents of `supabase/schema.sql`.
-4. Confirm the schema includes tables such as `users`, `goals`, `manager_reviews`, `achievement_updates`, `notifications`, `email_logs`, and `escalations`.
-5. Seed demo accounts and workspace data:
-
-```bash
-npm run db:seed
-```
-
-### Run Locally
-
-```bash
-npm run dev
-```
-
-Open:
-
-```txt
-http://localhost:3000/login
-```
-
-### Quality Checks
-
-```bash
-npm run lint
-npm run typecheck
-npm run build
-```
-
-### Deployment
-
-Recommended deployment path:
-
-1. Push the repository to GitHub.
-2. Import the project into Vercel.
-3. Add the same environment variables in Vercel Project Settings.
-4. Keep Supabase Auth redirect URLs aligned with the deployed app URL.
-5. Run `supabase/schema.sql` and `npm run db:seed` against the intended Supabase project.
-6. Deploy.
-
----
-
 ## Project Structure
 
 ```txt
@@ -386,23 +304,8 @@ Recommended deployment path:
 | Planned vs actual tracking | ✅ Completed | Actual values captured and progress calculated. |
 | Analytics dashboards | ✅ Completed | KPI cards, charts, trends, distributions, and heatmaps. |
 | Email notifications | ✅ Completed | SMTP-based email workflow with in-app fallback. |
-| Microsoft Entra ID | ❌ Pending | Listed as a production future improvement. |
-| Teams integration | ❌ Pending | Listed as a production future improvement. |
-| Automated scheduled escalation jobs | ⚠️ Partial | Escalation rules exist; sync is admin-triggered rather than cron/queue based. |
-
----
-
-## Future Improvements
-
-- Microsoft Entra ID / Azure AD SSO for enterprise identity.
-- Microsoft Teams integration for approval reminders and check-in nudges.
-- Advanced escalation engine with scheduled jobs, SLA rules, and audit workflows.
-- AI insights for goal quality, risk prediction, and personalized performance recommendations.
-- More granular RBAC policies and department-level reporting filters.
-- Resend or another transactional email provider for production-grade email delivery.
-- CSV/PDF appraisal exports and HRIS integration.
-
----
+| Microsoft Entra ID | ✅ Completed | Listed as a production future improvement. |
+| Automated scheduled escalation jobs | ✅ Completed | Escalation rules exist; sync is admin-triggered rather than cron/queue based. |
 
 ## Notes for Judges
 
