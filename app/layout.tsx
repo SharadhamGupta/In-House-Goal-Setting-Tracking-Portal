@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClientRoot } from "@/components/layout/client-root";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,6 +16,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body>
         <ClientRoot profile={profile ?? undefined}>{children}</ClientRoot>
+        <Analytics />
       </body>
     </html>
   );
