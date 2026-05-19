@@ -8,9 +8,17 @@
 
 **Enterprise goal setting, approvals, quarterly progress tracking, and HR governance in one role-based portal.**
 
-AtomBerg GoalHub is a hackathon-ready implementation of an in-house **Goal Setting & Tracking Portal** for enterprise teams. It solves a common organizational problem: goals are often scattered across spreadsheets, email threads, appraisal documents, and manager follow-ups, which creates poor visibility, weak accountability, delayed approvals, and manual performance review workflows.
+AtomBerg GoalHub is a hackathon implementation of an in-house **Goal Setting & Tracking Portal** for enterprise teams. It solves a common organizational problem: goals are scattered across spreadsheets, email threads, and appraisal documents, creating poor visibility, weak accountability, delayed approvals, and manual performance review workflows.
 
 This project brings the workflow into a secure SaaS-style application where employees define measurable goals, managers review and approve them, and Admin/HR teams monitor organizational goal health through analytics, notifications, and escalation governance.
+
+---
+
+## Live Demo
+
+**Hosted URL:** https://in-house-goal-setting-tracking-port-ten.vercel.app/
+
+**Source Code:** https://github.com/SharadhamGupta/In-House-Goal-Setting-Tracking-Portal
 
 ---
 
@@ -18,39 +26,28 @@ This project brings the workflow into a secure SaaS-style application where empl
 
 Built for **AtomQuest Hackathon 1.0** under the **In-House Goal Setting & Tracking Portal** challenge.
 
-The solution aligns with the BRD/problem statement by covering:
+The solution covers all Phase 1 and Phase 2 BRD requirements:
 
-- Structured employee goal creation with validation rules.
-- Manager approval and rejection workflow.
-- Role-based employee, manager, and Admin/HR access.
-- Goal locking after approval.
-- Quarterly check-ins with planned vs actual progress.
-- Dashboards, analytics, notifications, and escalation visibility.
+- Structured employee goal creation with validation rules (max 8 goals, min 10% weightage, total must equal 100%)
+- Manager (L1) approval and rejection workflow with inline editing
+- Goal locking after approval with admin unlock capability
+- Shared goals — admin/manager can push departmental KPIs to multiple employees
+- Quarterly check-ins (Q1–Q4) with planned vs actual progress tracking
+- System-computed progress scores for all four UoM types (Min, Max, Timeline, Zero)
+- Role-based portals for Employee, Manager, and Admin/HR
+- Dashboards, analytics, notifications, escalation governance, and audit trail
 
 ---
 
 ## Demo Accounts
 
-The login page includes quick-fill demo buttons, and judges can also use these seeded accounts manually.
+The login page includes quick-fill demo buttons. Judges can also enter credentials manually.
 
 | Role | Email | Password | Suggested Test Journey |
 | --- | --- | --- | --- |
-| Employee | `employee@demo.com` | `Employee123` | Create goals, submit for approval, update quarterly achievements |
-| Manager | `manager@demo.com` | `Manager123` | Review submitted goals, approve/reject, send check-in reminders |
-| Admin/HR | `admin@demo.com` | `Admin123` | View organization analytics, unlock goals, sync/resolve escalations |
-
-### How to Test
-
-1. Open `/login`.
-2. Select a quick login button or enter credentials manually.
-3. Sign in with a seeded account.
-4. The app redirects by role:
-
-| Role | Redirect |
-| --- | --- |
-| Employee | `/employee` |
-| Manager | `/manager` |
-| Admin/HR | `/admin` |
+| Employee | `employee@demo.com` | `Employee123` | Create goals → submit for approval → update quarterly achievements → view progress |
+| Manager | `manager@demo.com` | `Manager123` | Review submitted goals → approve/reject → conduct check-ins → send reminders |
+| Admin/HR | `admin@demo.com` | `Admin123` | View org analytics → manage cycles → unlock goals → resolve escalations → audit trail |
 
 ---
 
@@ -60,33 +57,56 @@ The login page includes quick-fill demo buttons, and judges can also use these s
 
 | Capability | Status | Implementation |
 | --- | --- | --- |
-| Goal Creation | ✅ Completed | Employees can create, edit, and delete draft goals. |
-| Goal Approval Workflow | ✅ Completed | Managers can approve or reject submitted goals with comments. |
-| Validation Rules | ✅ Completed | Max 8 goals, minimum 10% weightage per goal, exact 100% total before submission. |
-| Role-based Access | ✅ Completed | Supabase Auth, route protection, and role-specific dashboards. |
-| Goal Locking | ✅ Completed | Approved goals are locked and protected from normal employee edits. |
-| Admin Controls | ✅ Completed | Admin/HR can view enterprise data and unlock approved goals when needed. |
+| Goal Creation | ✅ Complete | Employees create up to 8 goals with Thrust Area, UoM type (Min/Max Numeric, %, Timeline, Zero), target, and weightage |
+| Validation Rules | ✅ Complete | Max 8 goals enforced; minimum 10% weightage per goal; total weightage must equal exactly 100% before submission |
+| Manager L1 Approval Workflow | ✅ Complete | Managers approve or reject submitted goals with inline target/weightage editing and structured comments |
+| Goal Locking | ✅ Complete | Approved goals are locked — no edits without Admin intervention |
+| Admin Goal Unlock | ✅ Complete | Admin can unlock any approved goal; all unlock events written to audit log |
+| Shared Goals | ✅ Complete | Admin/manager pushes a configurable departmental KPI to multiple employees; recipients adjust weightage only; title and target are read-only |
+| Shared Goal Achievement Sync | ✅ Complete | Primary owner's achievement updates propagate automatically to all linked recipient goal sheets |
+| Goal Submission Window | ✅ Complete | Submission enforced within the configured cycle window (opens 1st May per BRD); banner shown to employees outside the window |
+| Audit Trail | ✅ Complete | All post-lock changes (approvals, rejections, unlocks, field edits) written to audit_logs table with actor, timestamp, old value, and new value |
 
-### Phase 2: Tracking & Reviews
+### Phase 2: Achievement Tracking & Quarterly Check-ins
 
 | Capability | Status | Implementation |
 | --- | --- | --- |
-| Quarterly Check-ins | ✅ Completed | Q1-Q4 achievement update flow for approved goals. |
-| Planned vs Actual Tracking | ✅ Completed | Actual values are captured against approved targets. |
-| Progress Calculations | ✅ Completed | Progress is calculated from UoM and Min/Max goal rules. |
-| Goal Status Tracking | ✅ Completed | Draft, submitted, approved, rejected, locked, and progress status states. |
-| Manager Reviews | ✅ Completed | Review records, comments, approval actions, and check-in visibility. |
-| Dashboards & Analytics | ✅ Completed | KPI cards, charts, trends, status distribution, and team/org insights. |
+| Quarterly Check-in Interface | ✅ Complete | Employees log actual achievement against planned targets for Q1–Q4 |
+| Quarter Window Enforcement | ✅ Complete | Check-in inputs disabled outside the active quarter window; API rejects out-of-window submissions |
+| Goal Status Tracking | ✅ Complete | Per-goal status: Not Started / On Track / Completed |
+| Progress Score Computation | ✅ Complete | System-computed scores: Min (Achievement÷Target), Max (Target÷Achievement), Timeline (completion vs deadline), Zero (100% if 0 else 0%) |
+| Manager Check-in Module | ✅ Complete | Managers view planned vs actual per team member, add structured comments, and formally mark check-ins as complete |
+| Check-in Completion Flag | ✅ Complete | Formal manager_checkin_completed flag per employee per quarter drives accurate completion dashboard metrics |
+
+### Check-in Schedule (BRD Aligned)
+
+| Period | Window | Action |
+| --- | --- | --- |
+| Goal Setting | 1st May | Goal creation, submission, and approval |
+| Q1 Check-in | July | Progress update — planned vs actual |
+| Q2 Check-in | October | Progress update — planned vs actual |
+| Q3 Check-in | January | Progress update — planned vs actual |
+| Q4 / Annual | March / April | Final achievement capture |
+
+### Reporting & Governance
+
+| Capability | Status | Implementation |
+| --- | --- | --- |
+| Achievement Report Export | ✅ Complete | Exportable CSV and XLSX showing planned target vs actual achievement per employee per quarter with progress scores |
+| Completion Dashboard | ✅ Complete | Real-time view of check-in completion rates per manager and per quarter, based on formal completion flags |
+| Audit Trail | ✅ Complete | Persisted audit_logs table — who changed what and when — visible to Admin/HR |
+| Goal Cycle Management | ✅ Complete | Admin configures cycle year, label, and all window open/close dates; active cycle enforced across all submission and check-in gates |
 
 ### Bonus Features
 
 | Capability | Status | Implementation |
 | --- | --- | --- |
-| Analytics Module | ✅ Completed | Role-aware analytics using goal, review, and achievement data. |
-| Email Notifications | ✅ Completed | Workflow email delivery through Nodemailer/Gmail SMTP. |
-| In-app Notifications | ✅ Completed | Notification bell with unread state and action links. |
-| Modern Visualization Dashboards | ✅ Completed | Recharts-powered dashboard views and heatmaps. |
-| Escalation Governance | ✅ Completed | Admin command center for delayed submissions, approvals, and check-ins. |
+| Analytics Module | ✅ Complete | QoQ achievement trends, goal distribution by thrust area and UoM, manager effectiveness dashboard, heatmaps |
+| Escalation Module | ✅ Complete | Rule-based escalation for submission delays, approval delays, and check-in delays; escalation chain with auto-notifications; admin resolution log |
+| Email Notifications | ✅ Complete | Automated emails for goal submission, approval, rejection, quarterly check-in reminders, check-in window open, and escalation alerts — Gmail SMTP via Nodemailer with deduplication |
+| In-app Notifications | ✅ Complete | Notification bell with unread state, per-event action links, and real-time badge count |
+| Forgot Password | ✅ Complete | Self-service password reset via Supabase Auth email link |
+| Loading States | ✅ Complete | Skeleton loaders on all route transitions — no blank flash on navigation |
 
 ---
 
@@ -94,69 +114,71 @@ The login page includes quick-fill demo buttons, and judges can also use these s
 
 ### Employee
 
-Employees use AtomBerg GoalHub to:
+- Create up to 8 measurable goals per cycle with thrust area, UoM, target, and weightage
+- Validate total weightage equals 100% before submission
+- Submit goals to manager for approval within the open goal-setting window
+- Log quarterly achievement updates during active quarter windows (Q1–Q4)
+- View personal progress scores, goal health, and notifications
+- Self-service password reset
 
-- Create up to 8 measurable goals.
-- Assign thrust area, UoM, Min/Max target type, target value, and weightage.
-- Validate that total goal weightage is exactly 100%.
-- Submit goals to their manager for approval.
-- Track quarterly achievement updates after goals are approved.
-- View personal progress, goal health, and notifications.
+### Manager (L1)
 
-### Manager
+- Review submitted goals from direct reports; edit targets and weightages inline before approving
+- Approve or reject goal sheets with comments; approved goals are locked
+- Push shared departmental KPIs to multiple team members
+- Conduct quarterly check-ins: view planned vs actual, add structured comments, mark check-in complete
+- Send quarterly reminder notifications to team
+- View team analytics, approval load, and employee performance trends
 
-Managers use AtomBerg GoalHub to:
+### Admin / HR
 
-- See submitted goals from direct reports.
-- Approve or reject goal sheets with manager comments.
-- Review approved goal progress and quarterly check-ins.
-- Send quarterly reminder notifications for pending updates.
-- Analyze team progress, completion, approval load, and employee performance trends.
-
-### Admin/HR
-
-Admin/HR users use AtomBerg GoalHub to:
-
-- Monitor organization-wide goal health.
-- View analytics across employees, managers, departments, goal statuses, and check-ins.
-- Unlock approved goals for controlled edits.
-- Sync and resolve escalation items for delayed workflow actions.
-- Maintain governance without manually chasing every stakeholder.
+- Monitor organisation-wide goal health and completion rates
+- Manage goal cycles — configure window open/close dates, set active cycle
+- Unlock approved goals for controlled exceptions (all unlock events audited)
+- View full audit trail of all post-lock changes
+- Sync and resolve escalation items for delayed workflow actions
+- Export achievement reports in CSV or XLSX format
 
 ---
 
 ## Architecture
 
-AtomBerg GoalHub follows a modular Next.js + Supabase architecture. The frontend renders role-aware dashboards, the Next.js API layer centralizes workspace actions, and Supabase stores authentication, users, goals, reviews, check-ins, notifications, and escalation records.
+AtomBerg GoalHub follows a modular Next.js + Supabase architecture. The frontend renders role-aware dashboards, the Next.js API layer centralises workspace actions, and Supabase stores all authentication, users, goals, reviews, achievements, notifications, escalations, audit logs, and cycle configuration.
 
 ```mermaid
 flowchart LR
-  User["Judge / Employee / Manager / Admin"] --> Login["Login Page"]
-  Login --> Auth["Supabase Auth"]
-  Auth --> Middleware["Next.js Middleware"]
+  User["Judge / Employee / Manager / Admin"] --> Login["Login Page\n(Quick-fill demo buttons)"]
+  Login --> Auth["Supabase Auth\n(Email/Password)"]
+  Auth --> Middleware["Next.js Middleware\n(Route protection + role redirect)"]
 
   subgraph App["Next.js App Router"]
-    Middleware --> Employee["Employee Portal"]
-    Middleware --> Manager["Manager Portal"]
-    Middleware --> Admin["Admin/HR Portal"]
-    Employee --> API["Workspace API"]
+    Middleware --> Employee["Employee Portal\n/goals /reviews /dashboard"]
+    Middleware --> Manager["Manager Portal\n/goals /reviews /tracking /dashboard"]
+    Middleware --> Admin["Admin/HR Portal\n/governance /escalations /reviews /dashboard"]
+    Employee --> API["Workspace API\nPOST /api/workspace"]
     Manager --> API
     Admin --> API
+    Admin --> ExportAPI["Export API\nGET /api/export"]
   end
 
   subgraph Server["Server Modules"]
-    API --> Repository["Workspace Repository"]
-    Repository --> NotificationService["Notification Service"]
-    Repository --> EscalationService["Escalation Service"]
+    API --> Repository["Workspace Repository\n(workspace-repository.ts)"]
+    API --> CycleUtils["Cycle Utils\n(window open/close checks)"]
+    Repository --> NotificationService["Notification Service\n(in-app + email)"]
+    Repository --> EscalationService["Escalation Service\n(rule engine)"]
+    Repository --> AuditService["Audit Logger\n(write to audit_logs)"]
+    ExportAPI --> Repository
   end
 
   subgraph Supabase["Supabase Backend"]
     Repository --> Database[("Postgres Database")]
-    Database --> Tables["Users, Goals, Reviews, Achievements"]
-    Database --> OpsTables["Notifications, Email Logs, Escalations"]
+    Database --> CoreTables["users · goals · achievement_updates\nmanager_reviews · goal_cycles"]
+    Database --> GovTables["audit_logs · escalations\nnotifications · email_logs"]
+    Database --> RLS["Row Level Security\n(per-role policies)"]
   end
 
-  NotificationService --> Email["SMTP Email Provider"]
+  NotificationService --> Email["Gmail SMTP\n(Nodemailer)"]
+  NotificationService --> InApp["In-app Notification Bell"]
 ```
 
 ### Request Flow
@@ -165,45 +187,155 @@ flowchart LR
 sequenceDiagram
   participant User
   participant UI as Next.js UI
+  participant MW as Middleware
   participant API as Workspace API
+  participant Cycle as Cycle Utils
   participant Repo as Repository Layer
   participant DB as Supabase Postgres
   participant Notify as Notification Service
+  participant Audit as Audit Logger
 
-  User->>UI: Submit goals / approve / update progress
-  UI->>API: Authenticated workspace action
-  API->>Repo: Validate profile and action
-  Repo->>DB: Read/write goals, reviews, achievements
-  Repo->>Notify: Create notification or email log when needed
-  Notify->>DB: Persist in-app notification and email attempt
-  DB-->>Repo: Updated workspace data
-  Repo-->>API: Result
+  User->>UI: Perform action (create goal / approve / update achievement)
+  UI->>MW: Request hits Next.js middleware
+  MW->>MW: Verify session + role, redirect if unauthorised
+  UI->>API: Authenticated POST /api/workspace {action, payload}
+  API->>API: Role guard check (manager/admin only actions enforced)
+  API->>Cycle: Check active cycle window (goal submission / check-in quarter)
+  Cycle-->>API: Window open or 403 Forbidden
+  API->>Repo: Execute repository action
+  Repo->>DB: Read / write goals, reviews, achievements, cycles
+  Repo->>Audit: Write to audit_logs (post-lock changes only)
+  Repo->>Notify: Create in-app notification + queue email
+  Notify->>DB: Persist notification row + email_logs row
+  Notify-->>User: Gmail SMTP email delivery
+  DB-->>Repo: Updated records
+  Repo-->>API: Result payload
   API-->>UI: JSON response
-  UI-->>User: Dashboard refresh and toast feedback
+  UI-->>User: Dashboard refresh + toast feedback
+```
+
+### Shared Goal Achievement Sync Flow
+
+```mermaid
+flowchart TD
+  A["Primary Owner logs achievement\n(upsertAchievement action)"] --> B{Is this a shared goal\nAND actor = primaryOwnerId?}
+  B -- No --> C["Save achievement for this goal only"]
+  B -- Yes --> D["Save achievement for primary goal"]
+  D --> E["Query all linked goals\nby shared_goal_group_id"]
+  E --> F["Upsert same actual + status\nto each recipient goal row\n(synced_from_owner = true)"]
+  F --> G["Recipient check-in UI\nshows synced value as read-only"]
+```
+
+### Goal Lifecycle State Machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> Draft : Employee creates goal
+  Draft --> Draft : Employee edits
+  Draft --> Submitted : Employee submits\n(window open + weightage = 100%)
+  Submitted --> Draft : Manager returns for rework
+  Submitted --> Approved : Manager approves\n(goals locked)
+  Submitted --> Rejected : Manager rejects
+  Approved --> Unlocked : Admin unlocks\n(audit log written)
+  Unlocked --> Draft : Employee edits
+  Draft --> Submitted : Re-submitted
+  Approved --> Approved : Achievement updates\nlogged per quarter
 ```
 
 ### Core Data Model
 
-The core schema is modeled directly in Supabase/PostgreSQL and includes auth-linked users, goals, manager reviews, achievement updates, check-ins, snapshots, notifications, email logs, audit logs, and escalation governance.
+The schema is defined in `supabase/schema.sql` and includes:
 
-![AtomBerg GoalHub Core Data Model](docs/core-data-model.png)
+```mermaid
+erDiagram
+  users {
+    uuid id PK
+    text name
+    text email
+    text role
+    text department
+    text title
+    uuid manager_id FK
+    timestamptz deleted_at
+  }
+  goal_cycles {
+    uuid id PK
+    int year
+    text label
+    timestamptz goal_setting_opens_at
+    timestamptz goal_setting_closes_at
+    timestamptz q1_opens_at
+    timestamptz q1_closes_at
+    timestamptz q2_opens_at
+    timestamptz q2_closes_at
+    timestamptz q3_opens_at
+    timestamptz q3_closes_at
+    timestamptz q4_opens_at
+    timestamptz q4_closes_at
+    bool is_active
+  }
+  goals {
+    uuid id PK
+    uuid user_id FK
+    uuid shared_goal_group_id
+    uuid primary_owner_id FK
+    text title
+    text thrust_area
+    text uom_type
+    text goal_type
+    numeric target
+    numeric weightage
+    text status
+    bool locked
+    bool approved
+  }
+  achievement_updates {
+    uuid id PK
+    uuid goal_id FK
+    text quarter
+    numeric actual
+    numeric progress_percent
+    text status
+    text employee_comment
+    text manager_comment
+    bool manager_checkin_completed
+    timestamptz manager_checkin_completed_at
+    bool synced_from_owner
+  }
+  manager_reviews {
+    uuid id PK
+    uuid goal_id FK
+    uuid manager_id FK
+    text action
+    text comment
+    timestamptz created_at
+  }
+  audit_logs {
+    uuid id PK
+    text entity_type
+    uuid entity_id FK
+    text action
+    uuid changed_by FK
+    jsonb old_value
+    jsonb new_value
+    timestamptz changed_at
+  }
+  escalations {
+    uuid id PK
+    text type
+    uuid subject_id FK
+    text status
+    timestamptz triggered_at
+    timestamptz resolved_at
+  }
 
----
-
-## Dashboard & Analytics Showcase
-
-AtomBerg GoalHub includes role-aware analytics that help teams move from manual status tracking to actionable visibility.
-
-| Analytics Area | What It Shows |
-| --- | --- |
-| KPI Cards | Total goals, weighted progress, check-in completion, pending approvals. |
-| QoQ Analytics | Quarter-over-quarter achievement progress, completion rate, and check-in volume. |
-| Progress Tracking | Weighted progress from approved goals and latest achievement updates. |
-| Status Distribution | Draft, submitted, approved, rejected, locked, and unlocked goal health. |
-| Organization Insights | Department-style goal distribution and thrust area breakdowns. |
-| Manager Effectiveness | Team size, approval turnaround, check-in discipline, completion quality, and score. |
-| Heatmaps | Employee quarterly activity matrix across Q1-Q4. |
-| Export | Analytics rows can be exported as CSV for reporting. |
+  users ||--o{ goals : "owns"
+  users ||--o{ users : "manages"
+  goals ||--o{ achievement_updates : "tracks"
+  goals ||--o{ manager_reviews : "reviewed by"
+  goals ||--o{ audit_logs : "audited"
+  goal_cycles ||--o{ goals : "belongs to cycle"
+```
 
 ---
 
@@ -213,79 +345,79 @@ AtomBerg GoalHub includes role-aware analytics that help teams move from manual 
 
 | Technology | Why It Was Chosen |
 | --- | --- |
-| Next.js App Router | Full-stack routing, server actions, API routes, middleware, and Vercel-friendly deployment. |
-| TypeScript | Safer domain modeling for goals, roles, statuses, reviews, and achievement updates. |
-| Tailwind CSS | Fast, consistent enterprise UI styling with responsive layouts. |
-| shadcn/ui-style Components | Clean Radix-based primitives for buttons, cards, dialogs, inputs, selects, toasts, and labels. |
-| Lucide React | Professional iconography for dashboard actions and workflow states. |
+| Next.js 15 App Router | Full-stack routing, API routes, middleware, and Vercel-optimised deployment |
+| TypeScript 5 | Type-safe domain modelling for goals, roles, statuses, reviews, and achievement updates |
+| Tailwind CSS | Fast, consistent enterprise UI with responsive layouts |
+| shadcn/ui Components | Radix-based primitives — buttons, cards, dialogs, inputs, selects, toasts, dropdowns |
+| Lucide React | Professional iconography for workflow states and dashboard actions |
+| Recharts | Responsive charts for KPI dashboards, QoQ trends, distributions, and heatmaps |
 
 ### Backend & Data
 
 | Technology | Why It Was Chosen |
 | --- | --- |
-| Supabase Auth | Email/password authentication with session handling and route protection. |
-| Supabase Postgres | Relational data model for users, goals, reviews, achievements, notifications, and escalations. |
-| Row Level Security | Foundation for role-aware access patterns and protected workspace data. |
-| Next.js API Routes | Centralized workspace actions between the UI and Supabase repository layer. |
-
-### Visualization
-
-| Technology | Why It Was Chosen |
-| --- | --- |
-| Recharts | Responsive charts for KPI dashboards, quarterly trends, distributions, and stacked views. |
+| Supabase Auth | Email/password authentication, session handling, password reset, and route protection |
+| Supabase Postgres | Relational model for users, goals, cycles, reviews, achievements, notifications, escalations, and audit logs |
+| Row Level Security | Per-role access policies enforced at the database layer as a second line of defence |
+| Next.js API Routes | Centralised workspace actions with API-level role guards before RLS |
+| xlsx (SheetJS) | XLSX export for the achievement report (CSV also available) |
 
 ### Notifications
 
 | Technology | Why It Was Chosen |
 | --- | --- |
-| Nodemailer + Gmail SMTP | Implemented in this repo for hackathon-stable email notifications with minimal infrastructure. |
-| In-app Notifications | Keeps workflow feedback available even if email credentials are not configured. |
-| Resend | Recommended production email provider option; the current mailer boundary can be adapted to Resend for Vercel deployments. |
+| Nodemailer + Gmail SMTP | Hackathon-stable email delivery with deduplication via email_logs table |
+| In-app Notifications | Real-time bell with unread badge; functional even without SMTP credentials configured |
 
 ### Deployment
 
 | Technology | Why It Was Chosen |
 | --- | --- |
-| Vercel | Natural hosting target for Next.js apps with environment variable management and preview deployments. |
-| Supabase Cloud | Managed Auth and Postgres backend suitable for fast hackathon delivery and scalable iteration. |
+| Vercel | Natural hosting target for Next.js with environment variable management and preview deployments |
+| Supabase Cloud | Managed Auth and Postgres; scalable from hackathon to production |
 
 ---
 
-## UI/UX Highlights
-
-- Enterprise SaaS inspired dashboard layout.
-- Responsive role-based pages for employee, manager, and Admin/HR workflows.
-- Professional cards, KPI sections, tables, charts, status badges, and notification patterns.
-- Demo-friendly login page with visible seeded credentials and quick-fill buttons.
-- Clean workflow feedback through toasts, disabled loading states, validation messages, and protected routes.
-
----
 ## Project Structure
 
 ```txt
 .
 ├── app/
-│   ├── api/workspace/          # Authenticated workspace API route
-│   ├── employee/               # Employee dashboard route
-│   ├── manager/                # Manager dashboard route
-│   ├── admin/                  # Admin/HR dashboard route
-│   └── login/                  # Login page, demo accounts, auth actions
+│   ├── api/
+│   │   ├── workspace/          # Main authenticated workspace API (all goal/review/cycle actions)
+│   │   └── export/             # Achievement report export API (CSV + XLSX)
+│   ├── dashboard/              # Role-aware dashboard with loading skeleton
+│   ├── goals/                  # Employee goal creation + manager shared goal push
+│   ├── reviews/                # Employee check-ins + manager check-in module + admin audit trail
+│   ├── tracking/               # Progress tracking views
+│   ├── governance/             # Admin: cycle management, goal register, unlock, manager effectiveness
+│   ├── escalations/            # Admin escalation command centre
+│   ├── reset-password/         # Password reset landing page (Supabase email link handler)
+│   └── login/                  # Login page with quick-fill demo buttons
 ├── components/
-│   ├── dashboard/              # Goal portal, achievement tracking, analytics dashboard
-│   ├── escalations/            # Admin escalation command center
-│   ├── goals/                  # Goal form dialog
-│   ├── notifications/          # In-app notification menu
-│   └── ui/                     # Reusable UI primitives
+│   ├── dashboard/              # KPI cards, analytics charts, QoQ trends, heatmaps
+│   ├── escalations/            # Escalation rule display and resolution UI
+│   ├── goals/                  # Goal form dialog, shared goal push panel
+│   ├── governance/             # Cycle management panel, goal register, audit trail tab
+│   ├── notifications/          # Notification bell, unread badge, action links
+│   ├── reviews/                # Employee check-in form, manager team check-ins, completion dashboard
+│   └── ui/                     # Reusable primitives + PageSkeleton loader
 ├── lib/
-│   ├── domain/                 # Goal validation, progress, analytics, shared types
-│   ├── escalations/            # Escalation rules and resolution service
-│   ├── notifications/          # Notification service, templates, mailer
-│   ├── services/               # API client and Supabase repository
-│   └── supabase/               # Supabase clients, config, middleware helpers
+│   ├── domain/                 # Types, validation, progress computation, cycle utils, workspace context
+│   ├── escalations/            # Escalation rule engine and resolution service
+│   ├── notifications/          # Notification service, email templates, Nodemailer mailer
+│   └── supabase/               # Supabase clients, middleware helpers
 ├── scripts/
-│   └── seed-demo-accounts.mjs  # Seeded hackathon users and demo data
+│   └── seed-demo-accounts.mjs  # Seeded demo users and demo analytics data
 └── supabase/
-    └── schema.sql              # Database schema, indexes, policies, triggers
+    ├── schema.sql              # Full DB schema: tables, indexes, RLS policies, triggers
+    └── migrations/             # Incremental migration files (applied in order)
+        ├── 001_add_department_title.sql
+        ├── 002_add_goal_cycles.sql
+        ├── 003_audit_logs_fix.sql
+        ├── 004_achievement_synced_flag.sql
+        ├── 005_manager_checkin_complete.sql
+        └── 006_users_soft_delete.sql
 ```
 
 ---
@@ -294,23 +426,36 @@ AtomBerg GoalHub includes role-aware analytics that help teams move from manual 
 
 | Problem Statement Requirement | Status | Notes |
 | --- | --- | --- |
-| Employee goal creation | ✅ Completed | Draft goal CRUD with structured fields. |
-| Goal validation | ✅ Completed | Max count, minimum weightage, and total 100% checks. |
-| Manager approval workflow | ✅ Completed | Submit, approve, reject, comments, and notifications. |
-| Role-based portals | ✅ Completed | Employee, Manager, Admin/HR routes and redirects. |
-| Goal locking after approval | ✅ Completed | Approved goals become locked. |
-| Admin unlock/governance | ✅ Completed | Admin can unlock and monitor escalations. |
-| Quarterly check-ins | ✅ Completed | Q1-Q4 progress update workflow. |
-| Planned vs actual tracking | ✅ Completed | Actual values captured and progress calculated. |
-| Analytics dashboards | ✅ Completed | KPI cards, charts, trends, distributions, and heatmaps. |
-| Email notifications | ✅ Completed | SMTP-based email workflow with in-app fallback. |
-| Microsoft Entra ID | ✅ Completed | Listed as a production future improvement. |
-| Automated scheduled escalation jobs | ✅ Completed | Escalation rules exist; sync is admin-triggered rather than cron/queue based. |
+| Employee goal creation | ✅ Complete | Draft goal CRUD with thrust area, UoM, target, weightage |
+| Goal validation rules | ✅ Complete | Max 8 goals, min 10% per goal, total must equal 100% — enforced client + server |
+| Manager L1 approval workflow | ✅ Complete | Submit → approve/reject with inline target/weightage editing and comments |
+| Goal locking after approval | ✅ Complete | Locked flag set on approval; DB trigger prevents direct edits |
+| Shared goals — push to multiple employees | ✅ Complete | Configurable title/target/UoM; recipients get weightage-only edit rights |
+| Shared goals — achievement sync from primary owner | ✅ Complete | Primary owner update propagates to all linked recipient goal sheets |
+| Goal submission window enforcement | ✅ Complete | API gate + UI banner; configured via admin cycle management |
+| Quarterly check-in interface | ✅ Complete | Q1–Q4 actual achievement input with status selection |
+| Quarter window enforcement | ✅ Complete | API rejects submissions outside active quarter window; UI shows window status |
+| Progress score computation (all 4 UoM types) | ✅ Complete | Min, Max, Timeline, Zero formulas implemented server-side |
+| Manager check-in module | ✅ Complete | Planned vs actual view, structured comments, formal mark-complete action |
+| Achievement report export | ✅ Complete | CSV and XLSX with planned target vs actual per quarter per employee |
+| Completion dashboard | ✅ Complete | Real-time check-in completion % per manager/quarter from formal completion flags |
+| Audit trail | ✅ Complete | audit_logs table written on every post-lock change (approve, reject, unlock, field edit) |
+| Goal cycle management | ✅ Complete | Admin UI to create/edit cycles and set window dates; active cycle enforced globally |
+| Role-based portals | ✅ Complete | Employee, Manager, Admin/HR routes with middleware + API-level role guards |
+| Admin unlock with governance | ✅ Complete | Admin unlocks goals; unlock event written to audit log with actor + timestamp |
+| Analytics dashboards | ✅ Complete | QoQ trends, goal distribution, manager effectiveness, heatmaps |
+| Email notifications | ✅ Complete | Goal submission, approval, rejection, check-in reminders, window-open alerts, escalation alerts |
+| Escalation module | ✅ Complete | Rule-based escalation for submission delays, approval delays, check-in delays; auto-notification chain; admin resolution |
+| Microsoft Entra ID / SSO | 🔄 Noted | Supabase Azure AD provider configured; org hierarchy sync noted as production roadmap item |
+| Microsoft Teams integration | 🔄 Noted | Noted as production enhancement; email notifications cover the same workflow events |
+
+---
 
 ## Notes for Judges
 
-- The app is designed to be tested quickly through the three demo accounts.
-- The login page displays all seeded credentials and quick-fill login buttons.
-- The database seed creates users, goals, reviews, achievements, and demo analytics data.
-- Email credentials are optional; the demo remains functional through in-app notifications even without SMTP setup.
-- The implementation avoids mock localStorage data and reads workspace records from Supabase through the Next.js API layer.
+- The app is designed to be tested quickly through the three demo accounts with quick-fill buttons on the login page.
+- The database seed creates users, goals, reviews, achievements, cycle configuration, and demo analytics data so dashboards are populated from the first login.
+- Email notifications are functional through Gmail SMTP. The demo remains fully usable through in-app notifications even if SMTP credentials are not configured in the environment.
+- All workspace data is read from Supabase through the Next.js API layer — no mock data, no localStorage.
+- Goal submission and quarterly check-in inputs are gated by the active cycle's window dates, which the admin can configure in the Governance → Cycle Management panel.
+- The audit trail is persisted in the `audit_logs` table and is visible to Admin/HR users under Reviews → Audit Trail.
