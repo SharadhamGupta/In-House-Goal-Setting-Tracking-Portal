@@ -1,7 +1,9 @@
-import { redirect } from "next/navigation";
-import { getCurrentProfile, getRoleHome } from "@/lib/auth";
+import { GoalHubHero } from "@/components/landing/goal-hub-hero";
 
-export default async function Home() {
-  const profile = await getCurrentProfile();
-  redirect(profile ? getRoleHome(profile.role) : "/login");
+export default function Home() {
+  return (
+    <main className="min-h-screen bg-background">
+      <GoalHubHero />
+    </main>
+  );
 }
