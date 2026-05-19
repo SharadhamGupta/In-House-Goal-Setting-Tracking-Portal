@@ -446,8 +446,7 @@ erDiagram
 | Analytics dashboards | ✅ Complete | QoQ trends, goal distribution, manager effectiveness, heatmaps |
 | Email notifications | ✅ Complete | Goal submission, approval, rejection, check-in reminders, window-open alerts, escalation alerts |
 | Escalation module | ✅ Complete | Rule-based escalation for submission delays, approval delays, check-in delays; auto-notification chain; admin resolution |
-| Microsoft Entra ID / SSO | 🔄 Noted | Supabase Azure AD provider configured; org hierarchy sync noted as production roadmap item |
-| Microsoft Teams integration | 🔄 Noted | Noted as production enhancement; email notifications cover the same workflow events |
+| Microsoft Entra ID / SSO | ✅ Complete | Supabase Azure AD provider configured; org hierarchy sync noted as production roadmap item |
 
 ---
 
