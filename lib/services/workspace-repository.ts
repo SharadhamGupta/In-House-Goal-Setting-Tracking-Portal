@@ -1,0 +1,611 @@
+import "server-only";
+
+import { calculateProgressPercent } from "@/lib/domain/progress";
+import { type SupabaseClient } from "@supabase/supabase-js";
+import type {
+  AchievementFormValues,
+  AchievementUpdate,
+  EscalationItem,
+  EscalationSeverity,
+  EscalationStatus,
+  EscalationType,
+  Goal,
+  GoalCycle,
+  GoalFormValues,
+  GoalProgressStatus,
+  GoalStatus,
+  GoalType,
+  GoalUom,
+  ManagerReview,
+  NotificationEventType,
+  NotificationItem,
+  Quarter,
+  Role,
+  User
+} from "@/lib/domain/types";
+import { isMissingEscalationRelation, toEscalation } from "@/lib/escalations/service";
+import { notifyGoalDecision, notifyGoalSubmitted, notifyQuarterlyCheckInReminder } from "@/lib/notifications/service";
+import { createClient } from "@/lib/supabase/server";
+
+async function writeAuditLog(
+  supabase: SupabaseClient,
+  entityType: 'goal',
+  entityId: string,
+  action: string,
+  changedBy: string,
+  oldValue: Record<string, unknown> | null,
+  newValue: Record<string, unknown> | null
+): Promise<void> {
+  try {
+    await supabase.from('audit_logs').insert({
+      entity_type: entityType,
+      entity_id: entityId,
+      action,
+      changed_by: changedBy,
+      old_value: oldValue,
+      new_value: newValue,
+      changed_at: new Date().toISOString()
+    });
+  } catch (e) {
+    // intentionally fire-and-forget — never throw, never block the main action
+  }
+}
+
+type GoalRow = {
+  id: string;
+  employee_id: string;
+  shared_goal_group_id?: string | null;
+  primary_owner_id?: string | null;
+  thrust_area: string;
+  title: string;
+  description: string;
+  uom: GoalUom;
+  goal_type: GoalType;
+  target: string;
+  weightage: number | string;
+  status: GoalStatus;
+  locked: boolean;
+  created_at: string;
+  updated_at?: string;
+};
+
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  manager_id: string | null;
+  department?: string | null;
+  title?: string | null;
+  created_at: string;
+};
+
+type ReviewRow = {
+  id: string;
+  goal_id: string;
+  manager_id: string;
+  action: "approved" | "rejected";
+  comment: string | null;
+  created_at: string;
+};
+
+type AchievementRow = {
+  id: string;
+  goal_id: string;
+  employee_id: string;
+  quarter: Quarter;
+  actual_value: string;
+  status: GoalProgressStatus;
+  employee_comment: string | null;
+  manager_comment: string | null;
+  progress_percent: number | string;
+  synced_from_owner?: boolean | null;
+  manager_checkin_completed?: boolean | null;
+  manager_checkin_completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type NotificationRow = {
+  id: string;
+  recipient_id: string;
+  actor_id: string | null;
+  event_type: NotificationEventType;
+  title: string;
+  message: string;
+  cta_href: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+type EscalationRow = {
+  id: string;
+  escalation_type: EscalationType;
+  status: EscalationStatus;
+  severity: EscalationSeverity;
+  employee_id: string | null;
+  manager_id: string | null;
+  goal_id: string | null;
+  quarter: Quarter | null;
+  title: string;
+  detail: string;
+  due_at: string;
+  triggered_at: string;
+  resolved_at: string | null;
+  last_evaluated_at: string;
+  dedupe_key: string;
+};
+
+function toGoal(row: GoalRow): Goal {
+  return {
+    id: row.id,
+    ownerId: row.employee_id,
+    sharedGoalGroupId: row.shared_goal_group_id ?? null,
+    primaryOwnerId: row.primary_owner_id ?? null,
+    thrustArea: row.thrust_area,
+    title: row.title,
+    description: row.description,
+    uom: row.uom,
+    goalType: row.goal_type,
+    target: row.target,
+    weightage: Number(row.weightage),
+    status: row.status,
+    locked: row.locked,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at
+  };
+}
+
+function toUser(row: UserRow): User {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    managerId: row.manager_id,
+    department: row.department ?? null,
+    title: row.title ?? null,
+    createdAt: row.created_at
+  };
+}
+
+function toReview(row: ReviewRow): ManagerReview {
+  return {
+    id: row.id,
+    goalId: row.goal_id,
+    managerId: row.manager_id,
+    status: row.action,
+    comment: row.comment ?? "",
+    createdAt: row.created_at
+  };
+}
+
+function toAchievement(row: AchievementRow): AchievementUpdate {
+  return {
+    id: row.id,
+    goalId: row.goal_id,
+    employeeId: row.employee_id,
+    quarter: row.quarter,
+    actualValue: row.actual_value,
+    status: row.status,
+    employeeComment: row.employee_comment ?? "",
+    managerComment: row.manager_comment ?? "",
+    progressPercent: Number(row.progress_percent),
+    syncedFromOwner: row.synced_from_owner ?? false,
+    managerCheckinCompleted: row.manager_checkin_completed ?? false,
+    managerCheckinCompletedAt: row.manager_checkin_completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function toNotification(row: NotificationRow): NotificationItem {
+  return {
+    id: row.id,
+    recipientId: row.recipient_id,
+    actorId: row.actor_id,
+    eventType: row.event_type,
+    title: row.title,
+    message: row.message,
+    ctaHref: row.cta_href,
+    readAt: row.read_at,
+    createdAt: row.created_at
+  };
+}
+
+function isMissingRelation(error: { code?: string; message?: string } | null) {
+  return error?.code === "42P01" || error?.message?.includes("Could not find the table");
+}
+
+export async function loadWorkspace() {
+  const supabase = await createClient();
+  const [
+    { data: goalRows, error: goalsError },
+    { data: userRows, error: usersError },
+    { data: reviewRows, error: reviewsError },
+    { data: achievementRows, error: achievementsError },
+    { data: notificationRows, error: notificationsError },
+    { data: escalationRows, error: escalationsError }
+  ] = await Promise.all([
+    supabase.from("goals").select("*").order("created_at", { ascending: true }),
+    supabase.from("users").select("id, name, email, role, manager_id, department, title, created_at").order("created_at"),
+    supabase.from("manager_reviews").select("*").order("created_at", { ascending: true }),
+    supabase.from("achievement_updates").select("*").order("updated_at", { ascending: false }),
+    supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(12),
+    supabase.from("escalations").select("*").order("triggered_at", { ascending: false }).limit(100)
+  ]);
+
+  if (goalsError) throw new Error(goalsError.message);
+  if (usersError) throw new Error(usersError.message);
+  if (reviewsError) throw new Error(reviewsError.message);
+  if (achievementsError) throw new Error(achievementsError.message);
+  if (notificationsError && !isMissingRelation(notificationsError)) throw new Error(notificationsError.message);
+  if (escalationsError && !isMissingEscalationRelation(escalationsError)) throw new Error(escalationsError.message);
+
+  return {
+    goals: (goalRows ?? []).map((row) => toGoal(row as GoalRow)),
+    users: (userRows ?? []).map((row) => toUser(row as UserRow)),
+    reviews: (reviewRows ?? []).map((row) => toReview(row as ReviewRow)),
+    achievements: (achievementRows ?? []).map((row) => toAchievement(row as AchievementRow)),
+    notifications: (notificationRows ?? []).map((row) => toNotification(row as NotificationRow)),
+    escalations: (escalationRows ?? []).map((row) => toEscalation(row as EscalationRow)) satisfies EscalationItem[]
+  };
+}
+
+export async function insertGoal(ownerId: string, values: GoalFormValues) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("goals")
+    .insert({
+      employee_id: ownerId,
+      thrust_area: values.thrustArea,
+      title: values.title,
+      description: values.description,
+      uom: values.uom,
+      goal_type: values.goalType,
+      target: values.target,
+      weightage: values.weightage
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return toGoal(data as GoalRow);
+}
+
+export async function updateGoal(goalId: string, values: GoalFormValues) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("goals")
+    .update({
+      thrust_area: values.thrustArea,
+      title: values.title,
+      description: values.description,
+      uom: values.uom,
+      goal_type: values.goalType,
+      target: values.target,
+      weightage: values.weightage
+    })
+    .eq("id", goalId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return toGoal(data as GoalRow);
+}
+
+export async function deleteGoal(goalId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("goals").delete().eq("id", goalId);
+  if (error) throw new Error(error.message);
+}
+
+export async function submitGoals(ownerId: string, actorId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("goals")
+    .update({ status: "submitted" })
+    .eq("employee_id", ownerId)
+    .in("status", ["draft", "rejected"])
+    .select("*");
+
+  if (error) throw new Error(error.message);
+  const goals = (data ?? []).map((row) => toGoal(row as GoalRow));
+  await notifyGoalSubmitted(actorId, ownerId, goals);
+  return goals;
+}
+
+export async function updateGoalFields(goalId: string, patch: Partial<Pick<Goal, "target" | "weightage">>) {
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("goals").select("target,weightage,locked").eq("id", goalId).single();
+
+  const { data, error } = await supabase.from("goals").update(patch).eq("id", goalId).select("*").single();
+
+  if (error) throw new Error(error.message);
+
+  if (current && current.locked) {
+    const { data: { user } } = await supabase.auth.getUser();
+    const actorId = user?.id || "system";
+
+    const oldVal: Record<string, any> = {};
+    const newVal: Record<string, any> = {};
+    if ("target" in patch && patch.target !== current.target) {
+      oldVal.target = current.target;
+      newVal.target = patch.target;
+    }
+    if ("weightage" in patch && patch.weightage !== current.weightage) {
+      oldVal.weightage = Number(current.weightage);
+      newVal.weightage = Number(patch.weightage);
+    }
+
+    if (Object.keys(newVal).length > 0) {
+      await writeAuditLog(supabase, "goal", goalId, "goal_field_updated", actorId, oldVal, newVal);
+    }
+  }
+
+  return toGoal(data as GoalRow);
+}
+
+export async function decideGoals(ownerId: string, managerId: string, status: "approved" | "rejected", comment: string) {
+  const supabase = await createClient();
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("goals")
+    .update({
+      status,
+      approved: status === "approved",
+      locked: status === "approved",
+      manager_comment: comment
+    })
+    .eq("employee_id", ownerId)
+    .eq("status", "submitted")
+    .select("*");
+
+  if (updateError) throw new Error(updateError.message);
+
+  const reviewRows = (updatedRows ?? []).map((goal) => ({
+    goal_id: goal.id,
+    manager_id: managerId,
+    action: status,
+    comment
+  }));
+
+  let reviews: ManagerReview[] = [];
+  if (reviewRows.length) {
+    const { data, error } = await supabase.from("manager_reviews").insert(reviewRows).select("*");
+    if (error) throw new Error(error.message);
+    reviews = (data ?? []).map((row) => toReview(row as ReviewRow));
+  }
+
+  const goals = (updatedRows ?? []).map((row) => toGoal(row as GoalRow));
+  await notifyGoalDecision(managerId, ownerId, status, goals, comment);
+
+  // STEP 3: Write audit logs
+  for (const goal of goals) {
+    await writeAuditLog(supabase, "goal", goal.id,
+      status === "approved" ? "goal_approved" : "goal_rejected",
+      managerId,
+      { status: "submitted" },
+      { status, comment }
+    );
+  }
+
+  return {
+    goals,
+    reviews
+  };
+}
+
+export async function sendQuarterlyCheckInReminders(actorId: string, quarter: Quarter) {
+  const supabase = await createClient();
+  const [{ data: goalRows, error: goalsError }, { data: achievementRows, error: achievementsError }] = await Promise.all([
+    supabase.from("goals").select("*").eq("status", "approved").order("created_at", { ascending: true }),
+    supabase.from("achievement_updates").select("goal_id, quarter").eq("quarter", quarter)
+  ]);
+
+  if (goalsError) throw new Error(goalsError.message);
+  if (achievementsError) throw new Error(achievementsError.message);
+
+  const updatedGoalIds = new Set((achievementRows ?? []).map((row) => row.goal_id as string));
+  const pendingGoals = (goalRows ?? []).map((row) => toGoal(row as GoalRow)).filter((goal) => !updatedGoalIds.has(goal.id));
+  const goalsByOwner = new Map<string, Goal[]>();
+
+  for (const goal of pendingGoals) {
+    goalsByOwner.set(goal.ownerId, [...(goalsByOwner.get(goal.ownerId) ?? []), goal]);
+  }
+
+  const results = await Promise.all(
+    Array.from(goalsByOwner.entries()).map(([employeeId, goals]) => notifyQuarterlyCheckInReminder(actorId, employeeId, quarter, goals))
+  );
+
+  return {
+    remindedEmployees: results.length,
+    pendingGoals: pendingGoals.length
+  };
+}
+
+export async function markNotificationsRead(notificationIds: string[]) {
+  if (!notificationIds.length) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .in("id", notificationIds)
+    .select("*");
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => toNotification(row as NotificationRow));
+}
+
+export async function pushSharedGoal(
+  ownerIds: string[],
+  primaryOwnerId: string,
+  goalData: {
+    title: string;
+    thrustArea: string;
+    uomType: string;
+    goalType: string;
+    target: number | string;
+    weightage: number;
+  }
+) {
+  const supabase = await createClient();
+  const sharedGoalGroupId = crypto.randomUUID();
+  const { data, error } = await supabase
+    .from("goals")
+    .insert(
+      ownerIds.map((ownerId) => ({
+        employee_id: ownerId,
+        shared_goal_group_id: sharedGoalGroupId,
+        primary_owner_id: primaryOwnerId,
+        thrust_area: goalData.thrustArea,
+        title: goalData.title,
+        description: `Shared departmental KPI pushed by manager: ${goalData.title}`,
+        uom: goalData.uomType as any,
+        goal_type: goalData.goalType.toLowerCase() as any,
+        target: String(goalData.target),
+        weightage: goalData.weightage
+      }))
+    )
+    .select("*");
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => toGoal(row as GoalRow));
+}
+
+export async function unlockGoal(goalId: string) {
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("goals").select("status,locked,approved").eq("id", goalId).single();
+
+  const { data, error } = await supabase
+    .from("goals")
+    .update({ locked: false, approved: false, status: "draft", manager_comment: null })
+    .eq("id", goalId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  if (current) {
+    const { data: { user } } = await supabase.auth.getUser();
+    const actorId = user?.id || "system";
+    await writeAuditLog(supabase, "goal", goalId, "goal_unlocked", actorId,
+      { status: current.status, locked: current.locked, approved: current.approved },
+      { status: "draft", locked: false, approved: false }
+    );
+  }
+
+  return toGoal(data as GoalRow);
+}
+
+export async function upsertAchievement(goal: Goal, values: AchievementFormValues) {
+  const supabase = await createClient();
+  const progressPercent = calculateProgressPercent(goal, values.actualValue, values.status);
+  const { data, error } = await supabase
+    .from("achievement_updates")
+    .upsert(
+      {
+        goal_id: goal.id,
+        employee_id: goal.ownerId,
+        quarter: values.quarter,
+        actual_value: values.actualValue,
+        status: values.status,
+        employee_comment: values.employeeComment,
+        manager_comment: values.managerComment,
+        progress_percent: progressPercent
+      },
+      { onConflict: "goal_id,quarter" }
+    )
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  // Check if this goal is a shared goal and the actor is the primary owner
+  const { data: { user } } = await supabase.auth.getUser();
+  const actorId = user?.id || "system";
+
+  if (goal.sharedGoalGroupId && goal.primaryOwnerId === actorId) {
+    // Find all other goals in the same shared group (recipients, not the primary)
+    const { data: linkedGoals } = await supabase
+      .from('goals')
+      .select('id, employee_id')
+      .eq('shared_goal_group_id', goal.sharedGoalGroupId)
+      .neq('id', goal.id);
+
+    if (linkedGoals && linkedGoals.length > 0) {
+      // Upsert the same actual + status for each recipient goal
+      // Do NOT copy manager_comment or employee_comment
+      const syncs = linkedGoals.map(lg => ({
+        goal_id: lg.id,
+        employee_id: lg.employee_id,
+        quarter: values.quarter,
+        actual_value: values.actualValue,
+        status: values.status,
+        progress_percent: progressPercent,
+        synced_from_owner: true
+      }));
+      await supabase
+        .from('achievement_updates')
+        .upsert(syncs, { onConflict: 'goal_id,quarter' });
+    }
+  }
+
+  return toAchievement(data as AchievementRow);
+}
+
+export async function getActiveCycle(supabase: SupabaseClient): Promise<GoalCycle | null> {
+  const { data } = await supabase
+    .from('goal_cycles')
+    .select('*')
+    .eq('is_active', true)
+    .single();
+  if (!data) return null;
+  return {
+    id: data.id, year: data.year, label: data.label,
+    goalSettingOpensAt: data.goal_setting_opens_at,
+    goalSettingClosesAt: data.goal_setting_closes_at,
+    q1OpensAt: data.q1_opens_at, q1ClosesAt: data.q1_closes_at,
+    q2OpensAt: data.q2_opens_at, q2ClosesAt: data.q2_closes_at,
+    q3OpensAt: data.q3_opens_at, q3ClosesAt: data.q3_closes_at,
+    q4OpensAt: data.q4_opens_at, q4ClosesAt: data.q4_closes_at,
+    isActive: data.is_active, createdAt: data.created_at
+  };
+}
+
+export async function completeManagerCheckin(
+  employeeId: string,
+  quarter: string,
+  comment: string
+) {
+  const supabase = await createClient();
+
+  // 1. Get all approved goals for this employee
+  const { data: goals, error: goalsError } = await supabase
+    .from("goals")
+    .select("id")
+    .eq("employee_id", employeeId)
+    .eq("status", "approved");
+
+  if (goalsError) throw new Error(goalsError.message);
+  if (!goals || goals.length === 0) {
+    return { success: true, updatedCount: 0 };
+  }
+
+  const goalIds = goals.map((g) => g.id);
+
+  // 2. Update achievement_updates for these goals + quarter
+  const { data: updated, error: updateError } = await supabase
+    .from("achievement_updates")
+    .update({
+      manager_checkin_completed: true,
+      manager_checkin_completed_at: new Date().toISOString(),
+      manager_comment: comment
+    })
+    .in("goal_id", goalIds)
+    .eq("quarter", quarter)
+    .select("id");
+
+  if (updateError) throw new Error(updateError.message);
+
+  return { success: true, updatedCount: updated?.length || 0 };
+}

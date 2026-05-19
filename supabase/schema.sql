@@ -1,0 +1,742 @@
+create extension if not exists "pgcrypto";
+
+do $$ begin
+  create type public.app_role as enum ('employee', 'manager', 'admin');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.goal_type as enum ('min', 'max');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.goal_status as enum ('draft', 'submitted', 'approved', 'rejected');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.review_action as enum ('approved', 'rejected');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.progress_status as enum ('not_started', 'on_track', 'completed');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type public.goal_quarter as enum ('Q1', 'Q2', 'Q3', 'Q4');
+exception when duplicate_object then null;
+end $$;
+
+create table if not exists public.users (
+  id uuid primary key references auth.users(id) on delete cascade,
+  name text not null,
+  email text not null unique,
+  role public.app_role not null default 'employee',
+  manager_id uuid null references public.users(id) on delete set null,
+  department text,
+  title text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.goals (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.users(id) on delete cascade,
+  shared_goal_group_id uuid,
+  primary_owner_id uuid references public.users(id) on delete set null,
+  thrust_area text not null,
+  title text not null,
+  description text not null,
+  uom text not null,
+  goal_type public.goal_type not null,
+  target text not null,
+  weightage numeric(5,2) not null check (weightage >= 10 and weightage <= 100),
+  status public.goal_status not null default 'draft',
+  approved boolean not null default false,
+  locked boolean not null default false,
+  manager_comment text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint approved_goals_are_locked check (approved = false or locked = true),
+  constraint submitted_or_terminal_status check (status in ('draft', 'submitted', 'approved', 'rejected'))
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'goals_uom_allowed'
+      and conrelid = 'public.goals'::regclass
+  ) then
+    alter table public.goals
+      add constraint goals_uom_allowed
+      check (uom in ('numeric', 'percentage', 'timeline', 'zero_based'));
+  end if;
+end $$;
+
+alter table public.goals add column if not exists shared_goal_group_id uuid;
+alter table public.goals add column if not exists primary_owner_id uuid references public.users(id) on delete set null;
+
+create table if not exists public.manager_reviews (
+  id uuid primary key default gen_random_uuid(),
+  goal_id uuid not null references public.goals(id) on delete cascade,
+  manager_id uuid not null references public.users(id) on delete cascade,
+  comment text,
+  action public.review_action not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.achievement_updates (
+  id uuid primary key default gen_random_uuid(),
+  goal_id uuid not null references public.goals(id) on delete cascade,
+  employee_id uuid not null references public.users(id) on delete cascade,
+  quarter public.goal_quarter not null,
+  actual_value text not null default '',
+  status public.progress_status not null default 'not_started',
+  employee_comment text,
+  manager_comment text,
+  progress_percent numeric(5,2) not null default 0 check (progress_percent >= 0 and progress_percent <= 100),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (goal_id, quarter)
+);
+
+-- NOTE: Table exists for future use; not queried by application code as of 2026-05-19
+create table if not exists public.quarterly_reviews (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.users(id) on delete cascade,
+  manager_id uuid references public.users(id) on delete set null,
+  quarter public.goal_quarter not null,
+  summary text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (employee_id, quarter)
+);
+
+-- NOTE: Table exists for future use; not queried by application code as of 2026-05-19
+create table if not exists public.check_ins (
+  id uuid primary key default gen_random_uuid(),
+  achievement_id uuid not null references public.achievement_updates(id) on delete cascade,
+  actor_id uuid not null references public.users(id) on delete cascade,
+  comment text not null,
+  created_at timestamptz not null default now()
+);
+
+-- NOTE: Table exists for future use; not queried by application code as of 2026-05-19
+create table if not exists public.progress_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  goal_id uuid not null references public.goals(id) on delete cascade,
+  quarter public.goal_quarter not null,
+  progress_percent numeric(5,2) not null check (progress_percent >= 0 and progress_percent <= 100),
+  status public.progress_status not null,
+  captured_at timestamptz not null default now()
+);
+
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references public.users(id) on delete set null,
+  entity_type text not null,
+  entity_id uuid,
+  action text not null,
+  before_payload jsonb,
+  after_payload jsonb,
+  created_at timestamptz not null default now(),
+  changed_by uuid references public.users(id) on delete set null,
+  old_value jsonb,
+  new_value jsonb,
+  changed_at timestamptz default now()
+);
+
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid not null references public.users(id) on delete cascade,
+  actor_id uuid references public.users(id) on delete set null,
+  event_type text not null,
+  title text not null,
+  message text not null,
+  cta_href text,
+  metadata jsonb not null default '{}'::jsonb,
+  dedupe_key text unique,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.email_logs (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid references public.users(id) on delete set null,
+  recipient_email text not null,
+  event_type text not null,
+  subject text not null,
+  status text not null default 'pending' check (status in ('pending', 'sent', 'failed', 'skipped')),
+  provider_message_id text,
+  error text,
+  dedupe_key text unique,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.escalations (
+  id uuid primary key default gen_random_uuid(),
+  escalation_type text not null check (escalation_type in ('goal_submission_delay', 'approval_delay', 'quarterly_checkin_delay')),
+  status text not null default 'pending' check (status in ('pending', 'escalated', 'overdue', 'resolved')),
+  severity text not null default 'medium' check (severity in ('medium', 'high', 'critical')),
+  employee_id uuid references public.users(id) on delete cascade,
+  manager_id uuid references public.users(id) on delete set null,
+  goal_id uuid references public.goals(id) on delete cascade,
+  quarter public.goal_quarter,
+  title text not null,
+  detail text not null,
+  due_at timestamptz not null,
+  triggered_at timestamptz not null default now(),
+  resolved_at timestamptz,
+  last_evaluated_at timestamptz not null default now(),
+  dedupe_key text unique not null,
+  metadata jsonb not null default '{}'::jsonb
+);
+
+create table if not exists public.escalation_logs (
+  id uuid primary key default gen_random_uuid(),
+  escalation_id uuid references public.escalations(id) on delete cascade,
+  actor_id uuid references public.users(id) on delete set null,
+  event_type text not null,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists users_manager_id_idx on public.users(manager_id);
+create index if not exists goals_employee_status_idx on public.goals(employee_id, status);
+create index if not exists goals_created_at_idx on public.goals(created_at);
+create index if not exists goals_shared_goal_group_idx on public.goals(shared_goal_group_id);
+create index if not exists manager_reviews_goal_id_idx on public.manager_reviews(goal_id);
+create index if not exists manager_reviews_manager_id_idx on public.manager_reviews(manager_id);
+create index if not exists achievement_updates_employee_quarter_idx on public.achievement_updates(employee_id, quarter);
+create index if not exists achievement_updates_goal_quarter_idx on public.achievement_updates(goal_id, quarter);
+create index if not exists quarterly_reviews_employee_quarter_idx on public.quarterly_reviews(employee_id, quarter);
+create index if not exists check_ins_achievement_id_idx on public.check_ins(achievement_id);
+create index if not exists progress_snapshots_goal_quarter_idx on public.progress_snapshots(goal_id, quarter);
+create index if not exists audit_logs_actor_created_idx on public.audit_logs(actor_id, created_at desc);
+create index if not exists audit_logs_entity_idx on public.audit_logs(entity_type, entity_id);
+create index if not exists notifications_recipient_created_idx on public.notifications(recipient_id, created_at desc);
+create index if not exists notifications_unread_idx on public.notifications(recipient_id, read_at) where read_at is null;
+create index if not exists email_logs_recipient_created_idx on public.email_logs(recipient_id, created_at desc);
+create index if not exists email_logs_event_status_idx on public.email_logs(event_type, status);
+create index if not exists escalations_status_due_idx on public.escalations(status, due_at);
+create index if not exists escalations_employee_idx on public.escalations(employee_id);
+create index if not exists escalations_manager_idx on public.escalations(manager_id);
+create index if not exists escalation_logs_escalation_idx on public.escalation_logs(escalation_id, created_at desc);
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_goals_updated_at on public.goals;
+create trigger set_goals_updated_at
+before update on public.goals
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_achievement_updates_updated_at on public.achievement_updates;
+create trigger set_achievement_updates_updated_at
+before update on public.achievement_updates
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_quarterly_reviews_updated_at on public.quarterly_reviews;
+create trigger set_quarterly_reviews_updated_at
+before update on public.quarterly_reviews
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_email_logs_updated_at on public.email_logs;
+create trigger set_email_logs_updated_at
+before update on public.email_logs
+for each row execute function public.set_updated_at();
+
+create or replace function public.create_profile_for_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.users (id, name, email, role, department, title)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
+    new.email,
+    coalesce((new.raw_user_meta_data->>'role')::public.app_role, 'employee'),
+    new.raw_user_meta_data->>'department',
+    new.raw_user_meta_data->>'title'
+  )
+  on conflict (id) do update
+    set name = excluded.name,
+        email = excluded.email,
+        role = excluded.role,
+        department = excluded.department,
+        title = excluded.title;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists create_profile_for_auth_user on auth.users;
+create trigger create_profile_for_auth_user
+after insert on auth.users
+for each row execute function public.create_profile_for_auth_user();
+
+create or replace function public.current_user_role()
+returns public.app_role
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select role from public.users where id = auth.uid()
+$$;
+
+create or replace function public.prevent_locked_goal_edits()
+returns trigger
+language plpgsql
+as $$
+begin
+  if old.locked = true and new.locked = true and (
+    old.thrust_area is distinct from new.thrust_area
+    or old.title is distinct from new.title
+    or old.description is distinct from new.description
+    or old.uom is distinct from new.uom
+    or old.goal_type is distinct from new.goal_type
+    or old.target is distinct from new.target
+    or old.weightage is distinct from new.weightage
+  ) then
+    raise exception 'Locked goals must be unlocked before editing';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_locked_goal_edits on public.goals;
+create trigger prevent_locked_goal_edits
+before update on public.goals
+for each row execute function public.prevent_locked_goal_edits();
+
+alter table public.users enable row level security;
+alter table public.goals enable row level security;
+alter table public.manager_reviews enable row level security;
+alter table public.achievement_updates enable row level security;
+alter table public.quarterly_reviews enable row level security;
+alter table public.check_ins enable row level security;
+alter table public.progress_snapshots enable row level security;
+alter table public.audit_logs enable row level security;
+alter table public.notifications enable row level security;
+alter table public.email_logs enable row level security;
+alter table public.escalations enable row level security;
+alter table public.escalation_logs enable row level security;
+
+drop policy if exists "Users can read self team and admin profiles" on public.users;
+create policy "Users can read self team and admin profiles"
+on public.users for select
+to authenticated
+using (
+  id = auth.uid()
+  or manager_id = auth.uid()
+  or public.current_user_role() in ('manager', 'admin')
+);
+
+drop policy if exists "Employees read own goals" on public.goals;
+create policy "Employees read own goals"
+on public.goals for select
+to authenticated
+using (employee_id = auth.uid());
+
+drop policy if exists "Employees create own draft goals" on public.goals;
+create policy "Employees create own draft goals"
+on public.goals for insert
+to authenticated
+with check (
+  employee_id = auth.uid()
+  and locked = false
+  and approved = false
+  and status = 'draft'
+);
+
+drop policy if exists "Employees update editable own goals" on public.goals;
+create policy "Employees update editable own goals"
+on public.goals for update
+to authenticated
+using (
+  employee_id = auth.uid()
+  and locked = false
+  and status in ('draft', 'rejected')
+)
+with check (
+  employee_id = auth.uid()
+  and locked = false
+  and status in ('draft', 'submitted', 'rejected')
+);
+
+drop policy if exists "Employees delete editable own goals" on public.goals;
+create policy "Employees delete editable own goals"
+on public.goals for delete
+to authenticated
+using (
+  employee_id = auth.uid()
+  and locked = false
+  and status in ('draft', 'rejected')
+);
+
+drop policy if exists "Managers view team goals" on public.goals;
+create policy "Managers view team goals"
+on public.goals for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.users employee
+    where employee.id = goals.employee_id
+      and employee.manager_id = auth.uid()
+  )
+);
+
+drop policy if exists "Managers update submitted team goals" on public.goals;
+create policy "Managers update submitted team goals"
+on public.goals for update
+to authenticated
+using (
+  status = 'submitted'
+  and exists (
+    select 1
+    from public.users employee
+    where employee.id = goals.employee_id
+      and employee.manager_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.users employee
+    where employee.id = goals.employee_id
+      and employee.manager_id = auth.uid()
+  )
+);
+
+drop policy if exists "Admins access all goals" on public.goals;
+create policy "Admins access all goals"
+on public.goals for all
+to authenticated
+using (public.current_user_role() = 'admin')
+with check (public.current_user_role() = 'admin');
+
+drop policy if exists "Employees managers admins read reviews" on public.manager_reviews;
+create policy "Employees managers admins read reviews"
+on public.manager_reviews for select
+to authenticated
+using (
+  manager_id = auth.uid()
+  or exists (
+    select 1
+    from public.goals goal
+    where goal.id = manager_reviews.goal_id
+      and goal.employee_id = auth.uid()
+  )
+  or public.current_user_role() = 'admin'
+);
+
+drop policy if exists "Managers create reviews for team goals" on public.manager_reviews;
+create policy "Managers create reviews for team goals"
+on public.manager_reviews for insert
+to authenticated
+with check (
+  manager_id = auth.uid()
+  and exists (
+    select 1
+    from public.goals goal
+    join public.users employee on employee.id = goal.employee_id
+    where goal.id = manager_reviews.goal_id
+      and employee.manager_id = auth.uid()
+  )
+);
+
+drop policy if exists "Admins access all reviews" on public.manager_reviews;
+create policy "Admins access all reviews"
+on public.manager_reviews for all
+to authenticated
+using (public.current_user_role() = 'admin')
+with check (public.current_user_role() = 'admin');
+
+drop policy if exists "Employees view own achievement updates" on public.achievement_updates;
+create policy "Employees view own achievement updates"
+on public.achievement_updates for select
+to authenticated
+using (employee_id = auth.uid());
+
+drop policy if exists "Employees update own approved achievement updates" on public.achievement_updates;
+create policy "Employees update own approved achievement updates"
+on public.achievement_updates for all
+to authenticated
+using (
+  employee_id = auth.uid()
+  and exists (
+    select 1 from public.goals goal
+    where goal.id = achievement_updates.goal_id
+      and goal.status = 'approved'
+  )
+)
+with check (
+  employee_id = auth.uid()
+  and exists (
+    select 1 from public.goals goal
+    where goal.id = achievement_updates.goal_id
+      and goal.status = 'approved'
+  )
+);
+
+drop policy if exists "Managers view and comment on team achievements" on public.achievement_updates;
+create policy "Managers view and comment on team achievements"
+on public.achievement_updates for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.users employee
+    where employee.id = achievement_updates.employee_id
+      and employee.manager_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.users employee
+    where employee.id = achievement_updates.employee_id
+      and employee.manager_id = auth.uid()
+  )
+);
+
+drop policy if exists "Admins access all achievement updates" on public.achievement_updates;
+create policy "Admins access all achievement updates"
+on public.achievement_updates for all
+to authenticated
+using (public.current_user_role() = 'admin')
+with check (public.current_user_role() = 'admin');
+
+drop policy if exists "Quarterly reviews visible to owners managers admins" on public.quarterly_reviews;
+create policy "Quarterly reviews visible to owners managers admins"
+on public.quarterly_reviews for all
+to authenticated
+using (
+  employee_id = auth.uid()
+  or manager_id = auth.uid()
+  or public.current_user_role() = 'admin'
+)
+with check (
+  employee_id = auth.uid()
+  or manager_id = auth.uid()
+  or public.current_user_role() = 'admin'
+);
+
+drop policy if exists "Check ins visible to related users" on public.check_ins;
+create policy "Check ins visible to related users"
+on public.check_ins for all
+to authenticated
+using (
+  actor_id = auth.uid()
+  or public.current_user_role() = 'admin'
+  or exists (
+    select 1
+    from public.achievement_updates update_row
+    join public.users employee on employee.id = update_row.employee_id
+    where update_row.id = check_ins.achievement_id
+      and (employee.id = auth.uid() or employee.manager_id = auth.uid())
+  )
+)
+with check (
+  actor_id = auth.uid()
+  or public.current_user_role() = 'admin'
+);
+
+drop policy if exists "Progress snapshots visible to related users" on public.progress_snapshots;
+create policy "Progress snapshots visible to related users"
+on public.progress_snapshots for select
+to authenticated
+using (
+  public.current_user_role() = 'admin'
+  or exists (
+    select 1
+    from public.goals goal
+    join public.users employee on employee.id = goal.employee_id
+    where goal.id = progress_snapshots.goal_id
+      and (employee.id = auth.uid() or employee.manager_id = auth.uid())
+  )
+);
+
+drop policy if exists "Admins read audit logs" on public.audit_logs;
+create policy "Admins read audit logs"
+on public.audit_logs for select
+to authenticated
+using (public.current_user_role() = 'admin');
+
+drop policy if exists "Authenticated users create audit logs" on public.audit_logs;
+create policy "Authenticated users create audit logs"
+on public.audit_logs for insert
+to authenticated
+with check (actor_id = auth.uid() or public.current_user_role() = 'admin');
+
+drop policy if exists "Users read own notifications" on public.notifications;
+create policy "Users read own notifications"
+on public.notifications for select
+to authenticated
+using (recipient_id = auth.uid() or public.current_user_role() = 'admin');
+
+drop policy if exists "Users mark own notifications read" on public.notifications;
+create policy "Users mark own notifications read"
+on public.notifications for update
+to authenticated
+using (recipient_id = auth.uid() or public.current_user_role() = 'admin')
+with check (recipient_id = auth.uid() or public.current_user_role() = 'admin');
+
+drop policy if exists "Authenticated users create notifications" on public.notifications;
+create policy "Authenticated users create notifications"
+on public.notifications for insert
+to authenticated
+with check (actor_id = auth.uid() or public.current_user_role() in ('manager', 'admin'));
+
+drop policy if exists "Admins read email logs" on public.email_logs;
+create policy "Admins read email logs"
+on public.email_logs for select
+to authenticated
+using (public.current_user_role() = 'admin');
+
+drop policy if exists "Authenticated users create email logs" on public.email_logs;
+create policy "Authenticated users create email logs"
+on public.email_logs for insert
+to authenticated
+with check (true);
+
+drop policy if exists "Authenticated users update email logs" on public.email_logs;
+create policy "Authenticated users update email logs"
+on public.email_logs for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Admins manage escalations" on public.escalations;
+create policy "Admins manage escalations"
+on public.escalations for all
+to authenticated
+using (public.current_user_role() = 'admin')
+with check (public.current_user_role() = 'admin');
+
+drop policy if exists "Managers read team escalations" on public.escalations;
+create policy "Managers read team escalations"
+on public.escalations for select
+to authenticated
+using (manager_id = auth.uid());
+
+drop policy if exists "Employees read own escalations" on public.escalations;
+create policy "Employees read own escalations"
+on public.escalations for select
+to authenticated
+using (employee_id = auth.uid());
+
+drop policy if exists "Admins read escalation logs" on public.escalation_logs;
+create policy "Admins read escalation logs"
+on public.escalation_logs for select
+to authenticated
+using (public.current_user_role() = 'admin');
+
+drop policy if exists "Admins create escalation logs" on public.escalation_logs;
+create policy "Admins create escalation logs"
+on public.escalation_logs for insert
+to authenticated
+with check (public.current_user_role() = 'admin');
+
+notify pgrst, 'reload schema';
+
+-- Seed/insert statements for the 3 demo users
+INSERT INTO auth.users (id, email, raw_user_meta_data, instance_id, aud, role)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  'bob@demo.com',
+  '{"name": "Bob", "role": "manager", "department": "Sales", "title": "Sales Manager"}',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email, raw_user_meta_data, instance_id, aud, role)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'alice@demo.com',
+  '{"name": "Alice", "role": "employee", "department": "Sales", "title": "Sales Executive"}',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email, raw_user_meta_data, instance_id, aud, role)
+VALUES (
+  '00000000-0000-0000-0000-000000000003',
+  'carol@demo.com',
+  '{"name": "Carol", "role": "admin", "department": "HR", "title": "HR Administrator"}',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated'
+) ON CONFLICT (id) DO NOTHING;
+
+-- Explicitly seed public.users to ensure department and title are set
+INSERT INTO public.users (id, name, email, role, department, title, manager_id)
+VALUES (
+  '00000000-0000-0000-0000-000000000002',
+  'Bob',
+  'bob@demo.com',
+  'manager',
+  'Sales',
+  'Sales Manager',
+  NULL
+) ON CONFLICT (id) DO UPDATE
+SET name = excluded.name,
+    email = excluded.email,
+    role = excluded.role,
+    department = excluded.department,
+    title = excluded.title,
+    manager_id = excluded.manager_id;
+
+INSERT INTO public.users (id, name, email, role, department, title, manager_id)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'Alice',
+  'alice@demo.com',
+  'employee',
+  'Sales',
+  'Sales Executive',
+  '00000000-0000-0000-0000-000000000002'
+) ON CONFLICT (id) DO UPDATE
+SET name = excluded.name,
+    email = excluded.email,
+    role = excluded.role,
+    department = excluded.department,
+    title = excluded.title,
+    manager_id = excluded.manager_id;
+
+INSERT INTO public.users (id, name, email, role, department, title, manager_id)
+VALUES (
+  '00000000-0000-0000-0000-000000000003',
+  'Carol',
+  'carol@demo.com',
+  'admin',
+  'HR',
+  'HR Administrator',
+  NULL
+) ON CONFLICT (id) DO UPDATE
+SET name = excluded.name,
+    email = excluded.email,
+    role = excluded.role,
+    department = excluded.department,
+    title = excluded.title,
+    manager_id = excluded.manager_id;
